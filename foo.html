@@ -1,0 +1,390 @@
+<html>
+	<head>
+		<title></title>
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+	</head>
+  <body>
+    
+    test<span class=address>408 Adrian Rd, De Lancey, PA 15733</span>
+    
+    require 'erb'
+
+require 'optparse'
+
+opts = {}
+parser=OptionParser.new do |o|
+  o.banner = """Usage: site.rb [options]
+"""
+  o.on("-i", "--init", "init site") do |v|
+    opts[:init] = v
+  end
+
+  o.on("-v", "--version", "print version") do |v|
+    exit
+  end
+  
+  o.on("-c", "--compile", "compile the site") do |v|
+    opts[:compile] = true
+  end 
+  
+  o.on("-p", "--page=", "set the page") do |v|
+    opts[:page]=v
+  end
+  
+  o.on("-s", "--section=", "set the section") do |v|
+    opts[:section]=v
+  end  
+
+  o.on("-S", "--sinatra", "sinatra server") do |v|
+    opts[:sinatra]=true
+  end  
+end
+parser.parse!
+
+class PageBuilder
+  attr_reader :site, :pg, :name,:item
+  def initialize site, pg
+    @site=site
+    @pg=pg
+    @item = pg
+    @name = pg[:name]
+  end
+  
+  def to_s
+    template = "./templates/#{pg[:template]}/templates/#{pg[:type]}.erb"
+    
+    if File.exist?(template)
+      puts "Page #{name} => template: #{template}"
+      ERB.new(open(template).read).result(binding)
+    else
+      puts "Page #{name} => template: #{self.class}"    
+      template = <<EOC
+<html>
+	<head>
+		<title><%= pg[:title] %></title>
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+	</head>
+  <body>
+    <% pg[:sections].each do |s| %>
+    <%= template(s) %>
+    <% end %>
+  </body>
+</html>
+EOC
+      ERB.new(template).result(binding)
+    end
+  end
+    
+  def template section
+    _section = pg[section]||site[:sections][section]
+    Section.for(_section[:class]).new(self, section)
+  end
+  
+  @@types = {}
+  def self.register n
+    @@types[n] = self
+  end
+  
+  def self.for n
+    @@types[n] || PageBuilder
+  end
+end
+
+class Section
+  attr_reader :page_builder, :section, :site, :pg, :item
+  def initialize page_builder, section
+    @page_builder=page_builder
+    
+    @pg   = @page_builder.pg
+    @site = @page_builder.site
+    
+    @section = section
+    @item    = page_builder.item[section]||pg[section]||site[:sections][section]
+  end
+  
+  def subsection s
+    Section.for((item[s]||site[:sections][s])[:class]).new(self,s)  
+  end
+  
+  def parse(i)
+    i.is_a?(Symbol) ? (subsection(i)) : i  
+  end
+
+  def to_s
+    template = "./templates/#{pg[:template]}/templates/#{item[:class]}.erb"
+    
+    if File.exist?(template)
+      puts "Page: #{page_builder.pg[:name]} => Section: #{section} => template: #{template}"
+      ERB.new(open(template).read).result(binding)
+    else
+      puts "Page: #{page_builder.pg[:name]} => Section: #{section} => template: #{self.class}"    
+      item[:items].map do |i|
+        parse(i)
+      end.join
+    end
+  end
+
+  @@types = {}
+  def self.register n
+    @@types[n] = self
+  end
+  
+  def self.for n
+    @@types[n] || Section
+  end
+end
+
+class FileSection < Section
+  register "file"
+  def to_s
+    open(item[:file]).read
+  end
+end
+
+class HamlSection < Section
+  register "haml"
+  def to_s
+    open(item[:file]).read
+  end
+end
+
+class TextSection < Section
+  register "text"
+  def to_s
+    open(item[:file]).read
+  end
+end
+
+class Erb < Section
+  register "erb"
+  
+  def to_s
+    if item[:file]
+      ERB.new(open(item[:file]).read).result(binding)
+    else
+      ERB.new(item[:body]).result(binding)
+    end
+  end
+end
+
+class Container < Section
+  register "container"  
+  def to_s
+    template = "./templates/#{pg[:template]}/templates/#{item[:class]}.erb"
+    
+    if File.exist?(template)
+      puts "Page: #{page_builder.pg[:name]} => Section: #{section} => template: #{template}"
+      ERB.new(open(template).read).result(binding)
+    else  
+      puts "Page: #{page_builder.pg[:name]} => Section: #{section} => Template: #{self.class}"
+      item[:sections].map do |s|
+        subsection s
+      end.join
+    end
+  end
+end
+
+class Footer < Container
+  register "footer"
+end
+
+class Copyright < Section
+  register "copyright"
+  def to_s
+    site[:copyright]
+  end
+end
+
+site = eval(DATA.read)
+
+if !opts[:sinatra]
+  require "fileutils"
+  
+  FileUtils.rm_rf("./build")
+  
+  site[:pages].each_pair do |name, pg|
+    FileUtils.mkdir_p("./build/#{t=pg[:template]}/images")
+    FileUtils.mkdir_p("./build/#{t}/assests")
+    FileUtils.cp_r "./templates/#{t}/assets", "./build/#{t}/" 
+    FileUtils.cp_r "./templates/#{t}/images", "./build/#{t}/"     
+    FileUtils.cp_r "./images", "./build/"   
+    pg[:name] = name   
+    File.open(pgn="./build/#{name}.html", "w") do |f| 
+      f.puts PageBuilder.for(pg[:type]).new(site, pg).to_s
+    end
+  end
+else
+  require 'sinatra'
+  
+  site[:pages].each_pair do |name, pg|
+    pg[:name] = name 
+    get "/"+name.to_s+".html" do
+      PageBuilder.for(pg[:type]).new(site,pg).to_s
+    end
+  end
+
+  get "/:template/assets/css/:file" do
+    content_type "text/css"
+    open("./templates/#{params[:template]}/assets/css/#{params[:file]}").read
+  end
+
+  get "/:template/assets/js/:file" do
+    content_type "text/javascript"
+    open("./templates/#{params[:template]}/assets/js/#{params[:file]}").read
+  end
+
+  get "/:template/images/:file" do
+    content_type "image/jpeg"
+    open("./templates/#{params[:template]}/images/#{params[:file]}").read
+  end
+
+  get "/images/*" do
+    content_type "image/jpeg"
+    open("./images/#{params["splat"].join("/")}").read
+  end
+
+  get "/:template/assets/fonts/:file" do
+    content_type "font/opentype"
+    open("./templates/#{params[:template]}/assets/fonts/#{params[:file]}").read
+  end
+end
+
+
+__END__
+# site
+{
+  # Details
+  logo:    {label: "www.KM-DOES.xyz"},
+  email:   "email@km-does.xyz",
+  phone:   "(814) 299-6542",
+  address: "408 Adrian Rd, De Lancey, PA 15733",
+  copyright: "&copy 2019 KM-Does XYZ",
+  
+  # Pages
+  pages: {
+    index: {
+      # Details
+      include_in_nav: true,
+      type: "index",
+      template: "default",
+      title:    "www.KM-DOES.xyz | Site Home",
+      sections: [:header, :nav, :banner, :grid, :footer],
+      
+      # Sections
+      
+      banner: {
+        class: "banner",
+        items: [
+          {img: "images/elec1.jpg",          title: "Residential & Industrial", heading: "Electric", action: {}},
+          {img: "images/auto.jpg",           title: "Home & Industry", heading: "Automation", action: {}},
+          {img: "images/design/design2.jpg", title: "Get Noticed!", heading: "Web Design", action: ""}
+        ]
+      },
+      grid: {
+        class: "grid",
+        items: [
+          {
+            img:  "images/elec1.jpg",          title: "Residential & Industrial", heading: "Electric",   action: {label: "Learn more.", href: "/electric.html"}, 
+            body: "Residential and Industrial Electrician services. 24hr Emergency service"
+          },
+          {
+            img:  "images/auto.jpg",           title: "Home & Industry",          heading: "Automation", action: {label: "Learn more.", href: "/electric.html"}, 
+            body: "Smart Home installation, Industrial Automation. Design and Support"
+          },
+          {
+            img:  "images/design/design2.jpg", title: "Get Noticed!",             heading: "WebDesign",  action: {label: "Learn more.", href: "/electric.html"}, 
+            body: "Website Design, SEO, Google and Bing Business, Yelp and more"
+          },
+        ]
+      }
+    },
+    
+    electric: {
+      include_in_nav: true,
+      type: "generic",
+      template: "default",
+      title:    "www.KM-DOES.xyz | Electric and Automation",
+      sections: [:header, :nav, :one,:two, :footer],
+      
+      one: {
+        class:   "heading",
+        title:   "Residential & Industrial", 
+        heading: "Electric", action: {},
+        img:     "images/elec1.jpg"
+      },
+      
+      two: {
+        class:   "content",
+        title:   "24 Emergency service",
+        heading: "Installation, Construction and support.",
+        items:   ["Residential and Industrial Electrician services", :address]
+      },
+    },
+ 
+     foo: {
+      type: "foo",
+      template: "default",
+      sections: [:bar, :file, :container],
+      bar: {
+        class: "bar",
+        items: ["test", :address]
+      },
+      
+      file: {
+        class: "file",
+        file: "./site.rb"
+      },
+      
+      container: {
+        class: "container",
+        sections: [:one],
+        one: {
+          items: ["test 2 foo"]
+        }
+      }
+    }   
+  },
+  
+  # Sitewide Sections
+  sections: {
+    footer: {
+      class:    "footer",
+      sections: [:address, :phone, :email, :copyright]
+    },
+    
+    copyright: {
+      class: "copyright"
+    },
+    
+    header: {
+      class: "header"
+    },
+    
+    nav: {
+      class: "nav",
+      extra: []
+    }, 
+
+    phone: {
+      class: "erb",
+      body: "<a href='tel:<%= site[:phone] %>'><span class=phone><%= site[:phone] %></span></a>"
+    },
+    
+     email: {
+      class: "erb",
+      body: "<a href='mailto:<%=site[:email] %>'><span class=email><%= site[:email] %></span></a>"
+    },     
+    
+    address: {
+      class: "erb",
+      body: "<span class=address><%= site[:address] %></span>"
+    }  
+  }
+}
+
+
+    
+    test 2 foo
+    
+  </body>
+</html>
