@@ -1693,7 +1693,7 @@
 		}
 
 	h2 {
-		font-size: 1.75rem;
+		font-size: 2.25rem;
 	}
 
 	h3 {
@@ -2560,12 +2560,12 @@
 	}
 
 	header h2 + p {
-		font-size: 1.25rem;
+		font-size: 2.75rem;
 		margin-top: -1rem;
 	}
 
 	header h3 + p {
-		font-size: 1.1rem;
+		font-size: 1.25rem;
 		margin-top: -0.8rem;
 	}
 
@@ -3963,7 +3963,7 @@
 
 			#menu .close:before {
 				content: '\f00d';
-				font-size: 1.25rem;
+				font-size: 1.75rem;
 			}
 
 			#menu .close:hover {
