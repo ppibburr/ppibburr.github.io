@@ -2678,6 +2678,7 @@
 		.wrapper > .inner {
 			margin: 0 auto;
 			width: 80rem;
+
 		}
 
 		.wrapper.style1 {
@@ -2890,7 +2891,7 @@
 
 		.wrapper.style2 {
 			background-color: #f2f2f2;
-			color: #a6a6a6;
+			color: #755f5f;
 		}
 
 			.wrapper.style2 input, .wrapper.style2 select, .wrapper.style2 textarea {
@@ -3069,7 +3070,7 @@
 			}
 
 			.wrapper.style2 header p {
-				color: #999999;
+				color: #5021c1 !important;
 			}
 
 			.wrapper.style2 table tbody tr {
@@ -4084,11 +4085,12 @@
 				cursor: pointer;
 				display: inline-block;
 				height: 2em;
-				overflow: hidden;
+				overflow: hidden !important;
 				padding: 0;
 				position: relative;
-				text-indent: 2em;
+				text-indent: 4em;
 				width: 2em;
+				content:"";
 			}
 
 				.banner .indicators li:before {
@@ -4315,5 +4317,9 @@
 .center {
   margin: 0 auto;
   text-align: center;
+ }
+ 
+ small {
+   font-size:x-small;
  }
 }
